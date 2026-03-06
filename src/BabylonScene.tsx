@@ -24,15 +24,17 @@ export default function BabylonScene() {
     const canvas = canvasRef.current!;
     const engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
     const scene = new Scene(engine);
-    scene.clearColor.set(0.529, 0.808, 0.922, 1); // sky blue
+    scene.clearColor.set(0.529, 0.808, 0.922, 1);
 
-    // Camera
+    // Camera - follows player from behind
     const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 8, Vector3.Zero(), scene);
     camera.lowerRadiusLimit = 3;
     camera.upperRadiusLimit = 15;
     camera.lowerBetaLimit = 0.3;
     camera.upperBetaLimit = Math.PI / 2.2;
     camera.attachControl(canvas, true);
+    // Pinch zoom on mobile
+    camera.pinchPrecision = 50;
 
     // Lights
     const hemiLight = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
@@ -54,7 +56,7 @@ export default function BabylonScene() {
     ground.receiveShadows = true;
 
     // Movement state
-    let moveDir = { x: 0, z: 0 };
+    let joystickDir = { x: 0, z: 0 };
     const speed = 0.06;
     let playerRoot: AbstractMesh | null = null;
     let idleAnim: AnimationGroup | null = null;
@@ -67,54 +69,50 @@ export default function BabylonScene() {
       playerRoot.position = new Vector3(0, 0, 0);
       playerRoot.scaling.setAll(1);
 
-      // Add shadows for all child meshes
       result.meshes.forEach((m) => {
         shadowGen.addShadowCaster(m);
       });
 
-      // Try to find idle/walk animations
       const anims = result.animationGroups;
       if (anims.length > 0) {
-        // Stop all first
         anims.forEach((a) => a.stop());
-
-        // Try to find by name
         idleAnim = anims.find((a) => /idle/i.test(a.name)) ?? anims[0];
         walkAnim = anims.find((a) => /walk|run/i.test(a.name)) ?? (anims.length > 1 ? anims[1] : null);
-
         idleAnim.start(true);
       }
-
-      camera.target = playerRoot.position;
     });
 
-    // Game loop - move player
+    // Game loop
     scene.onBeforeRenderObservable.add(() => {
       if (!playerRoot) return;
 
-      const hasInput = Math.abs(moveDir.x) > 0.01 || Math.abs(moveDir.z) > 0.01;
+      const hasInput = Math.abs(joystickDir.x) > 0.01 || Math.abs(joystickDir.z) > 0.01;
 
       if (hasInput) {
-        // Move
-        playerRoot.position.x += moveDir.x * speed;
-        playerRoot.position.z += moveDir.z * speed;
+        // Move relative to camera orientation
+        const cameraAngle = camera.alpha + Math.PI / 2;
+        const cos = Math.cos(cameraAngle);
+        const sin = Math.sin(cameraAngle);
+        const worldX = joystickDir.x * cos - joystickDir.z * sin;
+        const worldZ = joystickDir.x * sin + joystickDir.z * cos;
 
-        // Clamp to ground bounds
+        playerRoot.position.x += worldX * speed;
+        playerRoot.position.z += worldZ * speed;
+
+        // Clamp to ground
         playerRoot.position.x = Math.max(-9.5, Math.min(9.5, playerRoot.position.x));
         playerRoot.position.z = Math.max(-9.5, Math.min(9.5, playerRoot.position.z));
 
-        // Rotate to face movement direction
-        const angle = Math.atan2(moveDir.x, moveDir.z);
-        playerRoot.rotation = new Vector3(0, angle, 0);
+        // Rotate player to face movement direction
+        const angle = Math.atan2(worldX, worldZ);
+        playerRoot.rotation.y = angle;
 
-        // Switch to walk animation
         if (!isWalking && walkAnim) {
           idleAnim?.stop();
           walkAnim.start(true);
           isWalking = true;
         }
       } else {
-        // Switch to idle animation
         if (isWalking) {
           walkAnim?.stop();
           idleAnim?.start(true);
@@ -122,52 +120,73 @@ export default function BabylonScene() {
         }
       }
 
-      // Camera follows player
-      camera.target.copyFrom(playerRoot.position);
+      // Camera follows player smoothly
+      camera.target = playerRoot.position;
     });
 
-    // --- Virtual joystick (touch controls) ---
+    // --- Virtual joystick ---
     const joystickEl = joystickRef.current!;
     const knob = joystickEl.querySelector(".joystick-knob") as HTMLDivElement;
     let joystickActive = false;
+    let joystickTouchId: number | null = null;
     let joystickCenter = { x: 0, y: 0 };
     const joystickRadius = 50;
 
     function handleJoystickStart(e: TouchEvent) {
       e.preventDefault();
+      e.stopPropagation();
+      const touch = e.changedTouches[0];
+      joystickTouchId = touch.identifier;
       joystickActive = true;
       const rect = joystickEl.getBoundingClientRect();
       joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      handleJoystickMove(e);
+      updateJoystick(touch.clientX, touch.clientY);
     }
 
     function handleJoystickMove(e: TouchEvent) {
       if (!joystickActive) return;
       e.preventDefault();
-      const touch = e.touches[0];
-      let dx = touch.clientX - joystickCenter.x;
-      let dy = touch.clientY - joystickCenter.y;
+      e.stopPropagation();
+      for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === joystickTouchId) {
+          updateJoystick(e.touches[i].clientX, e.touches[i].clientY);
+          break;
+        }
+      }
+    }
+
+    function updateJoystick(clientX: number, clientY: number) {
+      let dx = clientX - joystickCenter.x;
+      let dy = clientY - joystickCenter.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > joystickRadius) {
         dx = (dx / dist) * joystickRadius;
         dy = (dy / dist) * joystickRadius;
       }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      moveDir = { x: dx / joystickRadius, z: -dy / joystickRadius };
+      joystickDir = { x: dx / joystickRadius, z: -dy / joystickRadius };
     }
 
     function handleJoystickEnd(e: TouchEvent) {
-      e.preventDefault();
-      joystickActive = false;
-      knob.style.transform = "translate(0px, 0px)";
-      moveDir = { x: 0, z: 0 };
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joystickTouchId) {
+          e.preventDefault();
+          e.stopPropagation();
+          joystickActive = false;
+          joystickTouchId = null;
+          knob.style.transform = "translate(0px, 0px)";
+          joystickDir = { x: 0, z: 0 };
+          break;
+        }
+      }
     }
 
     joystickEl.addEventListener("touchstart", handleJoystickStart, { passive: false });
     joystickEl.addEventListener("touchmove", handleJoystickMove, { passive: false });
     joystickEl.addEventListener("touchend", handleJoystickEnd, { passive: false });
+    joystickEl.addEventListener("touchcancel", handleJoystickEnd, { passive: false });
 
-    // Keyboard support (for desktop testing)
+    // Keyboard (desktop)
     const keys = new Set<string>();
     function onKeyDown(e: KeyboardEvent) {
       keys.add(e.key.toLowerCase());
@@ -183,18 +202,16 @@ export default function BabylonScene() {
       if (keys.has("s") || keys.has("arrowdown")) z = -1;
       if (keys.has("a") || keys.has("arrowleft")) x = -1;
       if (keys.has("d") || keys.has("arrowright")) x = 1;
-      // Normalize diagonal
       if (x !== 0 && z !== 0) {
         const len = Math.sqrt(x * x + z * z);
         x /= len;
         z /= len;
       }
-      moveDir = { x, z };
+      joystickDir = { x, z };
     }
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
-    // Render loop
     engine.runRenderLoop(() => scene.render());
 
     const onResize = () => engine.resize();
@@ -207,6 +224,7 @@ export default function BabylonScene() {
       joystickEl.removeEventListener("touchstart", handleJoystickStart);
       joystickEl.removeEventListener("touchmove", handleJoystickMove);
       joystickEl.removeEventListener("touchend", handleJoystickEnd);
+      joystickEl.removeEventListener("touchcancel", handleJoystickEnd);
       engine.dispose();
     };
   }, []);
@@ -214,7 +232,7 @@ export default function BabylonScene() {
   return (
     <div style={{ position: "relative", width: "100vw", height: "100dvh", overflow: "hidden", touchAction: "none" }}>
       <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
-      {/* Virtual joystick */}
+      {/* Virtual joystick - stopPropagation prevents camera from reacting */}
       <div
         ref={joystickRef}
         style={{
@@ -245,7 +263,6 @@ export default function BabylonScene() {
           }}
         />
       </div>
-      {/* Desktop hint */}
       <div
         style={{
           position: "absolute",
@@ -260,7 +277,7 @@ export default function BabylonScene() {
           pointerEvents: "none",
         }}
       >
-        WASD / Arrows to move · Touch joystick on mobile
+        WASD / Arrows · Joystick on mobile · Drag to rotate camera
       </div>
     </div>
   );
