@@ -95,7 +95,10 @@ export default function BabylonScene() {
       const playerResult = await SceneLoader.ImportMeshAsync("", "/", "player4.glb", scene);
       playerRoot = playerResult.meshes[0];
       playerRoot.position = new Vector3(0, 0, 0);
-      playerRoot.scaling.setAll(1);
+      // player4.glb is exported with 0.01 scale and 90° X rotation from FBX
+      // Correct: scale up to 1 and remove the X rotation
+      playerRoot.scaling.setAll(100);
+      playerRoot.rotation = new Vector3(0, 0, 0);
 
       playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
 
