@@ -12,7 +12,6 @@ import {
   DirectionalLight,
   ShadowGenerator,
   type AbstractMesh,
-  type AnimationGroup,
 } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF";
 
@@ -26,14 +25,13 @@ export default function BabylonScene() {
     const scene = new Scene(engine);
     scene.clearColor.set(0.529, 0.808, 0.922, 1);
 
-    // Camera - follows player from behind
+    // Camera
     const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 8, Vector3.Zero(), scene);
     camera.lowerRadiusLimit = 3;
     camera.upperRadiusLimit = 15;
     camera.lowerBetaLimit = 0.3;
     camera.upperBetaLimit = Math.PI / 2.2;
     camera.attachControl(canvas, true);
-    // Pinch zoom on mobile
     camera.pinchPrecision = 50;
 
     // Lights
@@ -59,8 +57,7 @@ export default function BabylonScene() {
     let joystickDir = { x: 0, z: 0 };
     const speed = 0.06;
     let playerRoot: AbstractMesh | null = null;
-    let idleAnim: AnimationGroup | null = null;
-    let walkAnim: AnimationGroup | null = null;
+    let walkTime = 0;
     let isWalking = false;
 
     // Load player
@@ -72,14 +69,6 @@ export default function BabylonScene() {
       result.meshes.forEach((m) => {
         shadowGen.addShadowCaster(m);
       });
-
-      const anims = result.animationGroups;
-      if (anims.length > 0) {
-        anims.forEach((a) => a.stop());
-        idleAnim = anims.find((a) => /idle/i.test(a.name)) ?? anims[0];
-        walkAnim = anims.find((a) => /walk|run/i.test(a.name)) ?? (anims.length > 1 ? anims[1] : null);
-        idleAnim.start(true);
-      }
     });
 
     // Game loop
@@ -99,7 +88,6 @@ export default function BabylonScene() {
         playerRoot.position.x += worldX * speed;
         playerRoot.position.z += worldZ * speed;
 
-        // Clamp to ground
         playerRoot.position.x = Math.max(-9.5, Math.min(9.5, playerRoot.position.x));
         playerRoot.position.z = Math.max(-9.5, Math.min(9.5, playerRoot.position.z));
 
@@ -107,20 +95,23 @@ export default function BabylonScene() {
         const angle = Math.atan2(worldX, worldZ);
         playerRoot.rotation.y = angle;
 
-        if (!isWalking && walkAnim) {
-          idleAnim?.stop();
-          walkAnim.start(true);
-          isWalking = true;
-        }
+        // Procedural walk animation: bob up/down + tilt side to side
+        walkTime += 0.15;
+        playerRoot.position.y = Math.abs(Math.sin(walkTime * 2)) * 0.06;
+        playerRoot.rotation.z = Math.sin(walkTime) * 0.08;
+        playerRoot.rotation.x = Math.sin(walkTime * 2) * 0.04;
+        isWalking = true;
       } else {
+        // Return to neutral pose smoothly
         if (isWalking) {
-          walkAnim?.stop();
-          idleAnim?.start(true);
+          walkTime = 0;
+          playerRoot.position.y = 0;
+          playerRoot.rotation.z = 0;
+          playerRoot.rotation.x = 0;
           isWalking = false;
         }
       }
 
-      // Camera follows player smoothly
       camera.target = playerRoot.position;
     });
 
@@ -232,7 +223,6 @@ export default function BabylonScene() {
   return (
     <div style={{ position: "relative", width: "100vw", height: "100dvh", overflow: "hidden", touchAction: "none" }}>
       <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
-      {/* Virtual joystick - stopPropagation prevents camera from reacting */}
       <div
         ref={joystickRef}
         style={{
