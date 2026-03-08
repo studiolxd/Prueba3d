@@ -26,10 +26,10 @@ export default function BabylonScene() {
     const scene = new Scene(engine);
     scene.clearColor.set(0.529, 0.808, 0.922, 1);
 
-    // Camera
-    const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 8, Vector3.Zero(), scene);
-    camera.lowerRadiusLimit = 3;
-    camera.upperRadiusLimit = 15;
+    // Camera — third person behind and above the player
+    const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3.5, 5, new Vector3(0, 1, 0), scene);
+    camera.lowerRadiusLimit = 2;
+    camera.upperRadiusLimit = 12;
     camera.lowerBetaLimit = 0.3;
     camera.upperBetaLimit = Math.PI / 2.2;
     camera.attachControl(canvas, true);
@@ -58,32 +58,69 @@ export default function BabylonScene() {
     let joystickDir = { x: 0, z: 0 };
     const speed = 0.06;
     let playerRoot: AbstractMesh | null = null;
-    let walkAnim: AnimationGroup | null = null;
-    let isWalking = false;
 
-    // Load player
-    SceneLoader.ImportMeshAsync("", "/", "player3.glb", scene).then((result) => {
-      playerRoot = result.meshes[0];
+    // Animations
+    let idleAnim: AnimationGroup | null = null;
+    let walkAnim: AnimationGroup | null = null;
+    let turnLeftAnim: AnimationGroup | null = null;
+    let turnRightAnim: AnimationGroup | null = null;
+    let currentAnim: AnimationGroup | null = null;
+
+    function playAnim(anim: AnimationGroup | null) {
+      if (!anim || anim === currentAnim) return;
+      currentAnim?.stop();
+      anim.start(true);
+      currentAnim = anim;
+    }
+
+    // Load player model, then load animations and retarget them
+    async function loadPlayer() {
+      // Load the base character with mesh + skeleton
+      const playerResult = await SceneLoader.ImportMeshAsync("", "/", "player3.glb", scene);
+      playerRoot = playerResult.meshes[0];
       playerRoot.position = new Vector3(0, 0, 0);
       playerRoot.scaling.setAll(1);
 
-      result.meshes.forEach((m) => {
-        shadowGen.addShadowCaster(m);
+      playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
+
+      // Stop any embedded animations
+      playerResult.animationGroups.forEach((a) => a.stop());
+
+      // Load each animation file — they share the same skeleton structure
+      const [idleResult, walkResult, leftResult, rightResult] = await Promise.all([
+        SceneLoader.ImportMeshAsync("", "/", "idle.glb", scene),
+        SceneLoader.ImportMeshAsync("", "/", "walking.glb", scene),
+        SceneLoader.ImportMeshAsync("", "/", "left turn.glb", scene),
+        SceneLoader.ImportMeshAsync("", "/", "right turn.glb", scene),
+      ]);
+
+      // Hide the extra meshes loaded from animation files
+      [idleResult, walkResult, leftResult, rightResult].forEach((r) => {
+        r.meshes.forEach((m) => {
+          m.isVisible = false;
+          m.setEnabled(false);
+        });
       });
 
-      // Use the animation from the model
-      const anims = result.animationGroups;
-      if (anims.length > 0) {
-        anims.forEach((a) => a.stop());
-        walkAnim = anims[0]; // "Take 001"
-      }
-    });
+      // Get the animation groups (each file has 1 animation)
+      idleAnim = idleResult.animationGroups[0] ?? null;
+      walkAnim = walkResult.animationGroups[0] ?? null;
+      turnLeftAnim = leftResult.animationGroups[0] ?? null;
+      turnRightAnim = rightResult.animationGroups[0] ?? null;
+
+      // Stop all and start idle
+      [idleAnim, walkAnim, turnLeftAnim, turnRightAnim].forEach((a) => a?.stop());
+      playAnim(idleAnim);
+    }
+
+    loadPlayer();
 
     // Game loop
     scene.onBeforeRenderObservable.add(() => {
       if (!playerRoot) return;
 
       const hasInput = Math.abs(joystickDir.x) > 0.01 || Math.abs(joystickDir.z) > 0.01;
+      const isTurning = Math.abs(joystickDir.x) > 0.5 && Math.abs(joystickDir.z) < 0.3;
 
       if (hasInput) {
         // Move relative to camera orientation
@@ -103,20 +140,20 @@ export default function BabylonScene() {
         const angle = Math.atan2(worldX, worldZ);
         playerRoot.rotation.y = angle;
 
-        // Play walk animation
-        if (!isWalking && walkAnim) {
-          walkAnim.start(true);
-          isWalking = true;
+        // Choose animation: turn left/right when mostly lateral, walk otherwise
+        if (isTurning && joystickDir.x < 0) {
+          playAnim(turnLeftAnim);
+        } else if (isTurning && joystickDir.x > 0) {
+          playAnim(turnRightAnim);
+        } else {
+          playAnim(walkAnim);
         }
       } else {
-        if (isWalking && walkAnim) {
-          walkAnim.stop();
-          walkAnim.reset();
-          isWalking = false;
-        }
+        playAnim(idleAnim);
       }
 
-      camera.target = playerRoot.position;
+      // Camera targets player torso height
+      camera.target.set(playerRoot.position.x, playerRoot.position.y + 1, playerRoot.position.z);
     });
 
     // --- Virtual joystick ---
