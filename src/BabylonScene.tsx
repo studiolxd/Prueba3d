@@ -95,10 +95,17 @@ export default function BabylonScene() {
       const playerResult = await SceneLoader.ImportMeshAsync("", "/", "player4.glb", scene);
       playerRoot = playerResult.meshes[0];
       playerRoot.position = new Vector3(0, 0, 0);
-      // player4.glb is exported with 0.01 scale and 90° X rotation from FBX
-      // Correct: scale up to 1 and remove the X rotation
-      playerRoot.scaling.setAll(100);
+      playerRoot.scaling.setAll(1);
       playerRoot.rotation = new Vector3(0, 0, 0);
+
+      // Fix FBX export: Armature node has 0.01 scale and 90° X rotation
+      // Reset it so the character stands upright
+      const armature = scene.getTransformNodeByName("Armature");
+      if (armature) {
+        armature.rotationQuaternion = null;
+        armature.rotation = new Vector3(0, 0, 0);
+        armature.scaling.setAll(100);
+      }
 
       playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
 
