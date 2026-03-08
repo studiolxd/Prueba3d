@@ -341,6 +341,21 @@ export default function BabylonScene() {
       >
         WASD / Arrows · Joystick on mobile · Drag to rotate camera
       </div>
+      <div
+        style={{
+          position: "absolute",
+          bottom: 10,
+          right: 10,
+          color: "white",
+          background: "rgba(0,0,0,0.4)",
+          padding: "4px 10px",
+          borderRadius: 6,
+          fontSize: 12,
+          pointerEvents: "none",
+        }}
+      >
+        v7
+      </div>
     </div>
   );
 }
