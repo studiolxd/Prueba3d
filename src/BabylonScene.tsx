@@ -98,13 +98,13 @@ export default function BabylonScene() {
       playerRoot.scaling.setAll(1);
       playerRoot.rotation = new Vector3(0, 0, 0);
 
-      // Fix FBX export: Armature node has 0.01 scale and 90° X rotation
-      // Reset it so the character stands upright
+      // Fix FBX export: Armature has 0.01 scale (keep it) and 90° X rotation (fix it)
       const armature = scene.getTransformNodeByName("Armature");
       if (armature) {
         armature.rotationQuaternion = null;
         armature.rotation = new Vector3(0, 0, 0);
-        armature.scaling.setAll(1);
+        // Keep original 0.01 scale from FBX export
+        armature.scaling.setAll(0.01);
       }
 
       playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
@@ -354,7 +354,7 @@ export default function BabylonScene() {
           pointerEvents: "none",
         }}
       >
-        v8
+        v9
       </div>
     </div>
   );
