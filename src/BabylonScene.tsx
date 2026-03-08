@@ -73,20 +73,36 @@ export default function BabylonScene() {
       currentAnim = anim;
     }
 
-    // Load player model, then load animations and retarget them
+    // Retarget animation group: remap bone names from underscore (idle.glb)
+    // to colon (player4.glb) so animations target the correct skeleton nodes
+    function retargetAnim(anim: AnimationGroup) {
+      for (const ta of anim.targetedAnimations) {
+        const target = ta.target;
+        if (target && target.name && typeof target.name === "string") {
+          // Find the matching node in the scene with colon naming
+          const colonName = target.name.replace(/^(mixamorig2)_/, "$1:");
+          const sceneNode = scene.getTransformNodeByName(colonName);
+          if (sceneNode) {
+            ta.target = sceneNode;
+          }
+        }
+      }
+    }
+
+    // Load player model + separate animation files
     async function loadPlayer() {
-      // Load the base character with mesh + skeleton
-      const playerResult = await SceneLoader.ImportMeshAsync("", "/", "player3.glb", scene);
+      // Load the base character (player4.glb has mesh + skin + skeleton)
+      const playerResult = await SceneLoader.ImportMeshAsync("", "/", "player4.glb", scene);
       playerRoot = playerResult.meshes[0];
       playerRoot.position = new Vector3(0, 0, 0);
       playerRoot.scaling.setAll(1);
 
       playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
 
-      // Stop any embedded animations
+      // Stop embedded animation
       playerResult.animationGroups.forEach((a) => a.stop());
 
-      // Load each animation file — they share the same skeleton structure
+      // Load animation-only files (same Mixamo skeleton, different name convention)
       const [idleResult, walkResult, leftResult, rightResult] = await Promise.all([
         SceneLoader.ImportMeshAsync("", "/", "idle.glb", scene),
         SceneLoader.ImportMeshAsync("", "/", "walking.glb", scene),
@@ -94,7 +110,7 @@ export default function BabylonScene() {
         SceneLoader.ImportMeshAsync("", "/", "right turn.glb", scene),
       ]);
 
-      // Hide the extra meshes loaded from animation files
+      // Hide meshes from animation files (they have no skin anyway)
       [idleResult, walkResult, leftResult, rightResult].forEach((r) => {
         r.meshes.forEach((m) => {
           m.isVisible = false;
@@ -102,14 +118,19 @@ export default function BabylonScene() {
         });
       });
 
-      // Get the animation groups (each file has 1 animation)
+      // Get animation groups and retarget to player4 skeleton
       idleAnim = idleResult.animationGroups[0] ?? null;
       walkAnim = walkResult.animationGroups[0] ?? null;
       turnLeftAnim = leftResult.animationGroups[0] ?? null;
       turnRightAnim = rightResult.animationGroups[0] ?? null;
 
-      // Stop all and start idle
-      [idleAnim, walkAnim, turnLeftAnim, turnRightAnim].forEach((a) => a?.stop());
+      [idleAnim, walkAnim, turnLeftAnim, turnRightAnim].forEach((a) => {
+        if (a) {
+          a.stop();
+          retargetAnim(a);
+        }
+      });
+
       playAnim(idleAnim);
     }
 
