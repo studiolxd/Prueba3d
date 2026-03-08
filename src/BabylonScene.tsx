@@ -12,6 +12,7 @@ import {
   DirectionalLight,
   ShadowGenerator,
   type AbstractMesh,
+  type AnimationGroup,
 } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF";
 
@@ -57,11 +58,11 @@ export default function BabylonScene() {
     let joystickDir = { x: 0, z: 0 };
     const speed = 0.06;
     let playerRoot: AbstractMesh | null = null;
-    let walkTime = 0;
+    let walkAnim: AnimationGroup | null = null;
     let isWalking = false;
 
     // Load player
-    SceneLoader.ImportMeshAsync("", "/", "player.glb", scene).then((result) => {
+    SceneLoader.ImportMeshAsync("", "/", "player3.glb", scene).then((result) => {
       playerRoot = result.meshes[0];
       playerRoot.position = new Vector3(0, 0, 0);
       playerRoot.scaling.setAll(1);
@@ -69,6 +70,13 @@ export default function BabylonScene() {
       result.meshes.forEach((m) => {
         shadowGen.addShadowCaster(m);
       });
+
+      // Use the animation from the model
+      const anims = result.animationGroups;
+      if (anims.length > 0) {
+        anims.forEach((a) => a.stop());
+        walkAnim = anims[0]; // "Take 001"
+      }
     });
 
     // Game loop
@@ -95,19 +103,15 @@ export default function BabylonScene() {
         const angle = Math.atan2(worldX, worldZ);
         playerRoot.rotation.y = angle;
 
-        // Procedural walk animation: bob up/down + tilt side to side
-        walkTime += 0.15;
-        playerRoot.position.y = Math.abs(Math.sin(walkTime * 2)) * 0.06;
-        playerRoot.rotation.z = Math.sin(walkTime) * 0.08;
-        playerRoot.rotation.x = Math.sin(walkTime * 2) * 0.04;
-        isWalking = true;
+        // Play walk animation
+        if (!isWalking && walkAnim) {
+          walkAnim.start(true);
+          isWalking = true;
+        }
       } else {
-        // Return to neutral pose smoothly
-        if (isWalking) {
-          walkTime = 0;
-          playerRoot.position.y = 0;
-          playerRoot.rotation.z = 0;
-          playerRoot.rotation.x = 0;
+        if (isWalking && walkAnim) {
+          walkAnim.stop();
+          walkAnim.reset();
           isWalking = false;
         }
       }
