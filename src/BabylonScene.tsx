@@ -64,12 +64,14 @@ export default function BabylonScene() {
     let walkAnim: AnimationGroup | null = null;
     let turnLeftAnim: AnimationGroup | null = null;
     let turnRightAnim: AnimationGroup | null = null;
+    let stopWalkAnim: AnimationGroup | null = null;
     let currentAnim: AnimationGroup | null = null;
+    let wasMoving = false;
 
-    function playAnim(anim: AnimationGroup | null) {
+    function playAnim(anim: AnimationGroup | null, loop = true) {
       if (!anim || anim === currentAnim) return;
       currentAnim?.stop();
-      anim.start(true);
+      anim.start(loop);
       currentAnim = anim;
     }
 
@@ -113,15 +115,16 @@ export default function BabylonScene() {
       playerResult.animationGroups.forEach((a) => a.stop());
 
       // Load animation-only files (same Mixamo skeleton, different name convention)
-      const [idleResult, walkResult, leftResult, rightResult] = await Promise.all([
+      const [idleResult, walkResult, leftResult, rightResult, stopWalkResult] = await Promise.all([
         SceneLoader.ImportMeshAsync("", "/", "idle.glb", scene),
         SceneLoader.ImportMeshAsync("", "/", "walking.glb", scene),
         SceneLoader.ImportMeshAsync("", "/", "left turn.glb", scene),
         SceneLoader.ImportMeshAsync("", "/", "right turn.glb", scene),
+        SceneLoader.ImportMeshAsync("", "/", "stop-walking.glb", scene),
       ]);
 
-      // Hide meshes from animation files (they have no skin anyway)
-      [idleResult, walkResult, leftResult, rightResult].forEach((r) => {
+      // Hide meshes from animation files
+      [idleResult, walkResult, leftResult, rightResult, stopWalkResult].forEach((r) => {
         r.meshes.forEach((m) => {
           m.isVisible = false;
           m.setEnabled(false);
@@ -133,13 +136,25 @@ export default function BabylonScene() {
       walkAnim = walkResult.animationGroups[0] ?? null;
       turnLeftAnim = leftResult.animationGroups[0] ?? null;
       turnRightAnim = rightResult.animationGroups[0] ?? null;
+      stopWalkAnim = stopWalkResult.animationGroups[0] ?? null;
 
+      // Retarget underscore-named anims; stop-walking uses colon naming already
       [idleAnim, walkAnim, turnLeftAnim, turnRightAnim].forEach((a) => {
         if (a) {
           a.stop();
           retargetAnim(a);
         }
       });
+      stopWalkAnim?.stop();
+
+      // When stop-walking finishes, transition to idle
+      if (stopWalkAnim) {
+        stopWalkAnim.onAnimationGroupEndObservable.add(() => {
+          if (currentAnim === stopWalkAnim) {
+            playAnim(idleAnim);
+          }
+        });
+      }
 
       playAnim(idleAnim);
     }
@@ -179,8 +194,15 @@ export default function BabylonScene() {
         } else {
           playAnim(walkAnim);
         }
+        wasMoving = true;
       } else {
-        playAnim(idleAnim);
+        // Transition: stop-walking plays once, then auto-transitions to idle
+        if (wasMoving && stopWalkAnim) {
+          playAnim(stopWalkAnim, false);
+          wasMoving = false;
+        } else if (!wasMoving && currentAnim !== stopWalkAnim && currentAnim !== idleAnim) {
+          playAnim(idleAnim);
+        }
       }
 
       // Camera targets player torso height
@@ -354,7 +376,7 @@ export default function BabylonScene() {
           pointerEvents: "none",
         }}
       >
-        v9
+        v10
       </div>
     </div>
   );
