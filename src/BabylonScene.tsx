@@ -27,9 +27,9 @@ export default function BabylonScene() {
     scene.clearColor.set(0.529, 0.808, 0.922, 1);
 
     // Camera — third person behind and above the player
-    const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3.5, 5, new Vector3(0, 1, 0), scene);
-    camera.lowerRadiusLimit = 2;
-    camera.upperRadiusLimit = 12;
+    const camera = new ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3.5, 8, new Vector3(0, 1, 0), scene);
+    camera.lowerRadiusLimit = 3;
+    camera.upperRadiusLimit = 40;
     camera.lowerBetaLimit = 0.3;
     camera.upperBetaLimit = Math.PI / 2.2;
     camera.attachControl(canvas, true);
@@ -48,7 +48,7 @@ export default function BabylonScene() {
     shadowGen.useBlurExponentialShadowMap = true;
 
     // Ground
-    const ground = MeshBuilder.CreateGround("ground", { width: 20, height: 20 }, scene);
+    const ground = MeshBuilder.CreateGround("ground", { width: 80, height: 80 }, scene);
     const groundMat = new StandardMaterial("groundMat", scene);
     groundMat.diffuseColor = new Color3(0.4, 0.75, 0.4);
     ground.material = groundMat;
@@ -164,8 +164,8 @@ export default function BabylonScene() {
         playerRoot.position.x += worldX * speed;
         playerRoot.position.z += worldZ * speed;
 
-        playerRoot.position.x = Math.max(-9.5, Math.min(9.5, playerRoot.position.x));
-        playerRoot.position.z = Math.max(-9.5, Math.min(9.5, playerRoot.position.z));
+        playerRoot.position.x = Math.max(-39, Math.min(39, playerRoot.position.x));
+        playerRoot.position.z = Math.max(-39, Math.min(39, playerRoot.position.z));
 
         // Rotate player to face movement direction
         const angle = Math.atan2(worldX, worldZ);
@@ -354,7 +354,7 @@ export default function BabylonScene() {
           pointerEvents: "none",
         }}
       >
-        v7
+        v8
       </div>
     </div>
   );
