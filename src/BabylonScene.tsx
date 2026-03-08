@@ -33,7 +33,7 @@ export default function BabylonScene() {
     camera.lowerBetaLimit = 0.3;
     camera.upperBetaLimit = Math.PI / 2.2;
     camera.attachControl(canvas, true);
-    camera.pinchPrecision = 50;
+    camera.pinchDeltaPercentage = 0.01;
 
     // Lights
     const hemiLight = new HemisphericLight("hemi", new Vector3(0, 1, 0), scene);
@@ -104,7 +104,7 @@ export default function BabylonScene() {
       if (armature) {
         armature.rotationQuaternion = null;
         armature.rotation = new Vector3(0, 0, 0);
-        armature.scaling.setAll(100);
+        armature.scaling.setAll(1);
       }
 
       playerResult.meshes.forEach((m) => shadowGen.addShadowCaster(m));
